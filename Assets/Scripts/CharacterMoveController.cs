@@ -26,41 +26,65 @@ public class CharacterMoveController : MonoBehaviour
     [Header("Camera")]
     public CameraMoveController gameCamera;
 
+    [Header("Sound Effects")]
+    public AudioClip jumpSound;
+    public AudioClip shootSound;
+
     private Rigidbody2D rig;
     private Animator anim;
-    private CharacterSoundController sound;
+    private AudioSource audioSource;
 
     private bool isJumping;
     private bool isOnGround;
 
     private float lastPositionX;
+    public float speedIncrement = 0.1f; // Besarnya kenaikan kecepatan
+    private int lastScoreMilestone = 0; // Skor milestone terakhir
+
+    public GameObject bulletPrefab; // Prefab peluru
+    public Transform bulletSpawnPoint; // Posisi spawn peluru
+    public float shootCooldown = 0.5f; // Waktu jeda antar tembakan
+
+    private float lastShootTime; // Waktu tembakan terakhir
 
     private void Start()
     {
         rig = GetComponent<Rigidbody2D>();
         anim = GetComponent<Animator>();
-        sound = GetComponent<CharacterSoundController>();
+        audioSource = GetComponent<AudioSource>();
 
         lastPositionX = transform.position.x;
+
+        if (audioSource == null)
+        {
+            Debug.LogError("AudioSource not found! Please attach an AudioSource to the GameObject.");
+        }
     }
 
     private void Update()
     {
-        // read input
+        // Read input
         if (Input.GetMouseButtonDown(0))
         {
             if (isOnGround)
             {
                 isJumping = true;
-
-                sound.PlayJump();
+                if (jumpSound != null && audioSource != null)
+                {
+                    audioSource.PlayOneShot(jumpSound);
+                    Debug.Log("Jump sound played!");
+                }
+                else
+                {
+                    Debug.LogWarning("Jump sound or AudioSource is missing!");
+                }
             }
         }
 
-        // change animation
+        // Change animation
         anim.SetBool("isOnGround", isOnGround);
 
-        // calculate score
+        // Calculate score
         int distancePassed = Mathf.FloorToInt(transform.position.x - lastPositionX);
         int scoreIncrement = Mathf.FloorToInt(distancePassed / scoringRatio);
 
@@ -70,8 +94,31 @@ public class CharacterMoveController : MonoBehaviour
             lastPositionX += distancePassed;
         }
 
-        // game over
+        if (Input.GetMouseButtonDown(1) && Time.time > lastShootTime + shootCooldown)
+        {
+            Shoot();
+            lastShootTime = Time.time; // Perbarui waktu tembakan terakhir
+        }
+
+        // Increase speed every 50 points
+        int currentScore = Mathf.FloorToInt(score.GetCurrentScore());
+        if (currentScore >= lastScoreMilestone + 50)
+        {
+            maxSpeed += speedIncrement; // Tingkatkan kecepatan maksimum
+            lastScoreMilestone += 50; // Perbarui milestone
+        }
+
+        // Game over
         if (transform.position.y < fallPositionY)
+        {
+            GameOver();
+        }
+    }
+
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        // Periksa jika player menyentuh obstacle
+        if (collision.gameObject.CompareTag("Obstacle"))
         {
             GameOver();
         }
@@ -79,7 +126,7 @@ public class CharacterMoveController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        // raycast ground
+        // Raycast ground
         RaycastHit2D hit = Physics2D.Raycast(transform.position, Vector2.down, groundRaycastDistance, groundLayerMask);
         if (hit)
         {
@@ -93,7 +140,7 @@ public class CharacterMoveController : MonoBehaviour
             isOnGround = false;
         }
 
-        // calculate velocity vector
+        // Calculate velocity vector
         Vector2 velocityVector = rig.velocity;
 
         if (isJumping)
@@ -107,18 +154,41 @@ public class CharacterMoveController : MonoBehaviour
         rig.velocity = velocityVector;
     }
 
+    private void Shoot()
+    {
+        // Spawn peluru di posisi spawn point
+        if (bulletPrefab != null && bulletSpawnPoint != null)
+        {
+            Instantiate(bulletPrefab, bulletSpawnPoint.position, Quaternion.identity);
+
+            if (shootSound != null && audioSource != null)
+            {
+                audioSource.PlayOneShot(shootSound);
+                Debug.Log("Shoot sound played!");
+            }
+            else
+            {
+                Debug.LogWarning("Shoot sound or AudioSource is missing!");
+            }
+        }
+        else
+        {
+            Debug.LogError("BulletPrefab or BulletSpawnPoint is missing!");
+        }
+    }
+
     private void GameOver()
     {
-        // set high score
+        // Set high score
         score.FinishScoring();
 
-        // stop camera movement
+        // Stop camera movement
         gameCamera.enabled = false;
 
-        // show gameover
+        // Show game over
         gameOverScreen.SetActive(true);
 
-        // disable this too
+        // Disable this script
         this.enabled = false;
     }
 
